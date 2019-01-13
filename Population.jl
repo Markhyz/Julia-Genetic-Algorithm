@@ -12,19 +12,19 @@ IndFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, NTuple{N, 
 abstract type AbstractPopulation{IndType <: Individual.AbstractIndividual} <: AbstractArray{Tuple{IndType, NTuple{N, Float64} where N}, 1} end
 
 mutable struct PopulationType{IndType} <: AbstractPopulation{IndType}
-  base_ind::IndType
+  ind_args::Tuple
   pop::Vector{IndType}
   fitness::Fitness.AbstractFitness{N} where N
   pop_fit::Vector{NTuple{N, Float64} where N}
   fit_refresh::Vector{Bool}
   function PopulationType{IndType}(x...) where {IndType}
-    args = build(x...)
+    args = build(IndType, x...)
     new(args[1], args[2], args[3], args[4], args[5])
   end
 end
 
-function build(base::IndType, f::Fitness.AbstractFitness{N}) where {IndType <: Individual.AbstractIndividual, N}
-  return base, Vector{IndType}(), f, Vector{NTuple{N, Float64}}(), Vector{Bool}()
+function build(ind_type::Type, ind_args::Tuple, f::Fitness.AbstractFitness{N}) where N
+  return ind_args, Vector{ind_type}(), f, Vector{NTuple{N, Float64}}(), Vector{Bool}()
 end
 
 function getPopSize(this::AbstractPopulation)
@@ -57,8 +57,8 @@ function evalFitness!(this::AbstractPopulation)
   end
 end
 
-function getBaseInd(this::AbstractPopulation)
-  return this.base_ind
+function getIndArgs(this::AbstractPopulation)
+  return this.ind_args
 end
 
 function getFitFunction(this::AbstractPopulation)
@@ -67,7 +67,7 @@ end
 
 function populateRandom!(this::AbstractPopulation{IndType}, num_ind::Int64) where {IndType}
   for i = 1 : num_ind
-    new_ind = IndType(this.base_ind)
+    new_ind = IndType(this.ind_args...)
     Individual.generateRandom!(new_ind)
     insertIndividual!(this, new_ind)
   end

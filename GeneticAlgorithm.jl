@@ -25,25 +25,24 @@ mutable struct GeneticAlgorithmType
   pop_size::Integer
   best_solution::Vector{Population.IndFitType{<: Individual.AbstractIndividual}}
   elite_size::Integer 
-  init_args::NTuple{M, Any} where {M}
-  sel_args::NTuple{M, Any} where {M}
-  cross_args::NTuple{M, Any} where {M}
-  mut_args::NTuple{M, Any} where {M}
+  init_args::Tuple
+  sel_args::Tuple
+  cross_args::Tuple
+  mut_args::Tuple
   function GeneticAlgorithmType(x...; 
-                        init_args::NTuple{N1, Any} = (GAInitialization.InitRandom,),
-                        sel_args::NTuple{N2, Any} = (GASelection.Tournament, 2),
-                        cross_args::NTuple{N3, Any} = (GACrossover.PointCrossover, 0.95),
-                        mut_args::NTuple{N4, Any} = (GAMutation.BitFlipMutation, 0.01)) where {N1, N2, N3, N4}
+                        init_args::Tuple = (GAInitialization.InitRandom,),
+                        sel_args::Tuple = (GASelection.Tournament, 2),
+                        cross_args::Tuple = (GACrossover.PointCrossover, 0.95),
+                        mut_args::Tuple = (GAMutation.BitFlipMutation, 0.01))
     args = build(x..., init_args, sel_args, cross_args, mut_args)
     new(args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
   end
 end
 
-function build(ind::IndType, fit::Fitness.AbstractFitness, ps::Integer, es::Integer, 
-               i_a::NTuple{N1, Any}, s_a::NTuple{N2, Any}, 
-               c_a::NTuple{N3, Any}, m_a::NTuple{N4, Any}) where {IndType, N1, N2, N3, N4}
+function build(ind_args::Tuple, fit::Fitness.AbstractFitness, ps::Integer, es::Integer, 
+               i_a::Tuple, s_a::Tuple, c_a::Tuple, m_a::Tuple)
   ps > 1 || error("GA: Population size must be greater than 1")
-  return Population.PopulationType{IndType}(ind, fit), ps, Vector{Population.IndFitType{IndType}}(), es, i_a, s_a, c_a, m_a
+  return Population.PopulationType{ind_args[1]}(ind_args[2:end], fit), ps, Vector{Population.IndFitType{ind_args[1]}}(), es, i_a, s_a, c_a, m_a
 end
 
 function getBestSolution(this::GeneticAlgorithmType)
@@ -68,9 +67,9 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       show(this.pop)
     end
 
-    pop_ind = Population.getBaseInd(this.pop)
+    ind_args = Population.getIndArgs(this.pop)
     pop_fit = Population.getFitFunction(this.pop)
-    new_pop = typeof(this.pop)(pop_ind, pop_fit)
+    new_pop = typeof(this.pop)(ind_args, pop_fit)
     
     # Population sorting
     cur_individuals = collect(this.pop) 
@@ -81,7 +80,7 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
     parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
 
     # Crossover
-    childs = typeof(Population.getBaseInd(this.pop))[]
+    childs = typeof(this.pop).parameters[1][]
     for parents in parents_group
       res_ch = GACrossover.crossover(parents..., this.cross_args...)
       push!(childs, res_ch...)
@@ -122,8 +121,6 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
 end
 
 function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
-  gr()
-
   # Create initial population
   GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
 
@@ -134,9 +131,9 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       show(this.pop)
     end
 
-    pop_ind = Population.getBaseInd(this.pop)
+    ind_args = Population.getIndArgs(this.pop)
     pop_fit = Population.getFitFunction(this.pop)
-    new_pop = typeof(this.pop)(pop_ind, pop_fit)
+    new_pop = typeof(this.pop)(ind_args, pop_fit)
 
     # Population sorting
     cur_individuals = [(this.pop[i], i) for i in eachindex(this.pop)]
@@ -160,13 +157,13 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
     end
     cur_individuals = [(this.pop[ind][1], (Float64(-i),))
                        for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]
-    println(typeof(cur_individuals))
+                        
     # Selection
     child_num = this.pop_size - this.elite_size
     parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
 
     # Crossover
-    childs = typeof(Population.getBaseInd(this.pop))[]
+    childs = typeof(this.pop).parameters[1][]
     for parents in parents_group
       res_ch = GACrossover.crossover(parents..., this.cross_args...)
       push!(childs, res_ch...)
@@ -200,18 +197,15 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
         push!(cur_best_solution, ind)
       end
     end
-    this.best_solution = dominationIntersection(this.best_solution, cur_best_solution) 
+    this.best_solution = dominationIntersection(this.best_solution, cur_best_solution, Population.getPopSize(this.pop)) 
     if log > 0 && (it - 1) % log == 0
       println(it, " -> Fitness: (", length(this.best_solution), ")")
     end
-
-    # Statistics
-    scatter([x .* Fitness.getDirection(Population.getFitFunction(this.pop)) for x in getindex.(this.best_solution, 2)])
   end
-  savefig("fitness.png")
+  return this.best_solution
 end
 
-function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}) where {IndType}
+function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}, max_size::Integer) where {IndType}
   x_dominated = fill(false, length(x))
   y_dominated = fill(false, length(y))
 
@@ -226,7 +220,7 @@ function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Arr
   x_non_dominated = x[filter(x -> !x_dominated[x], eachindex(x))]
   y_non_dominated = y[filter(x -> !y_dominated[x], eachindex(y))]
   res = [x_non_dominated..., y_non_dominated...]
-  return res[1:min(length(res), 100)]
+  return res[1:min(length(res), max_size)]
 end
 
 end
