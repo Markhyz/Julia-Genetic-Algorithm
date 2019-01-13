@@ -7,23 +7,23 @@ include("utility.jl")
 using Individual
 using Fitness
 
-IndFitType{IndType, N} = Tuple{IndType, NTuple{N, Float64}} where {IndType <: Individual.AbstractIndividual, N}
+IndFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, NTuple{N, Float64} where N}
 
-abstract type AbstractPopulation{IndType <: Individual.AbstractIndividual, N} <: AbstractArray{Tuple{IndType, NTuple{N, Float64}} , 1} end
+abstract type AbstractPopulation{IndType <: Individual.AbstractIndividual} <: AbstractArray{Tuple{IndType, NTuple{N, Float64} where N}, 1} end
 
-mutable struct PopulationType{IndType, N} <: AbstractPopulation{IndType, N}
+mutable struct PopulationType{IndType} <: AbstractPopulation{IndType}
   base_ind::IndType
   pop::Vector{IndType}
-  fitness::FitType where {FitType <: Fitness.AbstractFitness}
-  pop_fit::Vector{NTuple{N, Float64}}
+  fitness::Fitness.AbstractFitness{N} where N
+  pop_fit::Vector{NTuple{N, Float64} where N}
   fit_refresh::Vector{Bool}
-  function PopulationType{IndType, N}(x...) where {IndType, N}
-    args = build(N, x...)
+  function PopulationType{IndType}(x...) where {IndType}
+    args = build(x...)
     new(args[1], args[2], args[3], args[4], args[5])
   end
 end
 
-function build(N::Int64, base::IndType, f::FitType) where {IndType, FitType}
+function build(base::IndType, f::Fitness.AbstractFitness{N}) where {IndType <: Individual.AbstractIndividual, N}
   return base, Vector{IndType}(), f, Vector{NTuple{N, Float64}}(), Vector{Bool}()
 end
 
@@ -31,7 +31,10 @@ function getPopSize(this::AbstractPopulation)
   return length(this.pop)   
 end
 
-function insertIndividual!(this::AbstractPopulation{IndType, N}, ind::IndType, fit::NTuple{N, Float64} = tuple(fill(NaN, N)...)) where {IndType, N}
+function insertIndividual!(this::AbstractPopulation{IndType}, ind::IndType, fit::NTuple{N, Float64} = (NaN,)) where {IndType, N}
+  if N != Fitness.getSize(this.fitness)
+    fit = tuple(fill(NaN, Fitness.getSize(this.fitness))...)
+  end
   push!(this.pop, ind)
   push!(this.pop_fit, fit)
   push!(this.fit_refresh, fit[1] === NaN)
@@ -110,8 +113,9 @@ function Base.lastindex(this::AbstractPopulation)
   return getPopSize(this)
 end
 
-function Base.:<(x::IndFitType{IndType, N}, y::IndFitType{IndType, N}) where {IndType, N}
-  N > 1 || return x[2][1] < y[2][1]
+function Base.:<(x::IndFitType{IndType}, y::IndFitType{IndType}) where {IndType}
+  fit_size = length(x[2])
+  fit_size > 1 || return x[2][1] < y[2][1]
   x[2] != y[2] || return false
   for i in eachindex(x[2])
     x[2][i] <= y[2][i] || return false

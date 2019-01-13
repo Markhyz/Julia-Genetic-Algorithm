@@ -9,7 +9,7 @@ using Random
 
 abstract type Tournament end
 
-function selectParents(individuals::Vector{Population.IndFitType{IndType, N}},  parent_num::Integer, ::Type{Tournament}, tour_size::Integer) where {IndType <: Individual.AbstractIndividual, N}
+function selectParents(individuals::Vector{Population.IndFitType{IndType}},  parent_num::Integer, ::Type{Tournament}, tour_size::Integer) where {IndType <: Individual.AbstractIndividual}
   parents = Vector{Tuple{IndType, IndType}}(undef, parent_num)
   choices = [(individuals[i], i) for i = eachindex(individuals)]
 

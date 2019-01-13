@@ -20,37 +20,37 @@ include("utility.jl")
 
 abstract type AbstractGeneticAlgorithm end
 
-mutable struct GeneticAlgorithmType{N}
-  pop::Population.PopulationType{IndType, N} where {IndType <: Individual.AbstractIndividual}
+mutable struct GeneticAlgorithmType
+  pop::Population.PopulationType{<: Individual.AbstractIndividual}
   pop_size::Integer
-  best_solution::Vector{Population.IndFitType{IndType, N}} where {IndType <: Individual.AbstractIndividual}
+  best_solution::Vector{Population.IndFitType{<: Individual.AbstractIndividual}}
   elite_size::Integer 
   init_args::NTuple{M, Any} where {M}
   sel_args::NTuple{M, Any} where {M}
   cross_args::NTuple{M, Any} where {M}
   mut_args::NTuple{M, Any} where {M}
-  function GeneticAlgorithmType{N}(x...; 
+  function GeneticAlgorithmType(x...; 
                         init_args::NTuple{N1, Any} = (GAInitialization.InitRandom,),
                         sel_args::NTuple{N2, Any} = (GASelection.Tournament, 2),
                         cross_args::NTuple{N3, Any} = (GACrossover.PointCrossover, 0.95),
-                        mut_args::NTuple{N4, Any} = (GAMutation.BitFlipMutation, 0.01)) where {N, N1, N2, N3, N4}
-    args = build(N, x..., init_args, sel_args, cross_args, mut_args)
+                        mut_args::NTuple{N4, Any} = (GAMutation.BitFlipMutation, 0.01)) where {N1, N2, N3, N4}
+    args = build(x..., init_args, sel_args, cross_args, mut_args)
     new(args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
   end
 end
 
-function build(N::Integer, ind::IndType, fit::FitType, ps::Integer, es::Integer, 
+function build(ind::IndType, fit::Fitness.AbstractFitness, ps::Integer, es::Integer, 
                i_a::NTuple{N1, Any}, s_a::NTuple{N2, Any}, 
-               c_a::NTuple{N3, Any}, m_a::NTuple{N4, Any}) where {IndType, FitType, N1, N2, N3, N4}
+               c_a::NTuple{N3, Any}, m_a::NTuple{N4, Any}) where {IndType, N1, N2, N3, N4}
   ps > 1 || error("GA: Population size must be greater than 1")
-  return Population.PopulationType{IndType, N}(ind, fit), ps, Vector{Population.IndFitType{IndType, N}}(), es, i_a, s_a, c_a, m_a
+  return Population.PopulationType{IndType}(ind, fit), ps, Vector{Population.IndFitType{IndType}}(), es, i_a, s_a, c_a, m_a
 end
 
 function getBestSolution(this::GeneticAlgorithmType)
   return this.best_solution
 end
 
-function evolve!(this::GeneticAlgorithmType{1}, num_it::Integer, log::Integer = 0)
+function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   best_fitness = zeros(Float64, num_it)
   mean_fitness = zeros(Float64, num_it)
   if Debug.ga_plot
@@ -121,7 +121,7 @@ function evolve!(this::GeneticAlgorithmType{1}, num_it::Integer, log::Integer = 
   return best_fitness, mean_fitness
 end
 
-function evolve!(this::GeneticAlgorithmType{N}, num_it::Integer, log::Integer = 0; fun = tuple(ones(N)...)) where {N}
+function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   gr()
 
   # Create initial population
@@ -206,12 +206,12 @@ function evolve!(this::GeneticAlgorithmType{N}, num_it::Integer, log::Integer = 
     end
 
     # Statistics
-    scatter([x .* fun for x in getindex.(this.best_solution, 2)])
+    scatter([x .* Fitness.getDirection(Population.getFitFunction(this.pop)) for x in getindex.(this.best_solution, 2)])
   end
   savefig("fitness.png")
 end
 
-function dominationIntersection(x::Array{Population.IndFitType{IndType, N}}, y::Array{Population.IndFitType{IndType, N}}) where {IndType, N}
+function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}) where {IndType}
   x_dominated = fill(false, length(x))
   y_dominated = fill(false, length(y))
 
