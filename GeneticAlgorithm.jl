@@ -18,8 +18,6 @@ using Plots
 
 include("utility.jl")
 
-abstract type AbstractGeneticAlgorithm end
-
 mutable struct GeneticAlgorithmType
   pop::Population.PopulationType{<: Individual.AbstractIndividual}
   pop_size::Integer
@@ -49,6 +47,48 @@ function getBestSolution(this::GeneticAlgorithmType)
   return this.best_solution
 end
 
+function initialize(this::GeneticAlgorithmType)
+  Population.clear(this.pop)
+  GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
+end
+
+function newGeneration(pop::PopType) where {PopType}
+  ind_args = Population.getIndArgs(pop)
+  pop_fit = Population.getFitFunction(pop)
+  new_pop = PopType(ind_args, pop_fit)
+  return new_pop
+end
+
+function selection(this::GeneticAlgorithmType, cur_individuals::Vector{<: Population.IndFitType{IndType}}) where {IndType}
+  child_num = this.pop_size - this.elite_size
+  parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
+  return parents_group, child_num
+end
+
+function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndType, IndType}}, child_num::Integer) where {IndType}
+  childs = typeof(this.pop).parameters[1][]
+  for parents in parents_group
+    res_ch = GACrossover.crossover(parents..., this.cross_args...)
+    push!(childs, res_ch...)
+    length(childs) < child_num || break
+  end
+  childs = childs[1:child_num]
+  return childs
+end
+
+function mutation(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation, childs::Vector{IndType}) where {IndType}
+  for child in childs
+    Population.insertIndividual!(new_pop, GAMutation.mutate!(child, this.mut_args...))
+  end
+end
+
+function evalNewGen(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation)
+  Population.evalFitness!(new_pop)
+  this.pop = new_pop
+end
+
+### Single Objective GA ###
+
 function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   best_fitness = zeros(Float64, num_it)
   mean_fitness = zeros(Float64, num_it)
@@ -58,8 +98,7 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
   end
 
   # Create initial population
-  Population.clear(this.pop)
-  GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
+	initialize(this)
 
   # Main loop
   @time for it = 1 : num_it
@@ -68,40 +107,31 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       show(this.pop)
     end
 
-    ind_args = Population.getIndArgs(this.pop)
-    pop_fit = Population.getFitFunction(this.pop)
-    new_pop = typeof(this.pop)(ind_args, pop_fit)
-    
+    # Create clean population
+		new_pop = newGeneration(this.pop)
+
     # Population sorting
     cur_individuals = collect(this.pop) 
     sort!(cur_individuals; rev = true)
 
     # Selection
-    child_num = this.pop_size - this.elite_size
-    parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
+    parents_group, child_num = selection(this, cur_individuals)
 
     # Crossover
-    childs = typeof(this.pop).parameters[1][]
-    for parents in parents_group
-      res_ch = GACrossover.crossover(parents..., this.cross_args...)
-      push!(childs, res_ch...)
-      length(childs) < child_num || break
-    end
-    childs = childs[1:child_num]
+    childs = crossover(this, parents_group, child_num)
 
     # Mutation
-    for child in childs
-      Population.insertIndividual!(new_pop, GAMutation.mutate!(child, this.mut_args...))
-    end
+   	mutation(this, new_pop, childs)
 
     # Elitism
     for (ind, fit) in @view cur_individuals[1:this.elite_size]
       Population.insertIndividual!(new_pop, ind, fit)
     end
 
-    # New generation
-    Population.evalFitness!(new_pop)
-    this.pop = new_pop
+    # New generation evaluation
+    evalNewGen(this, new_pop)
+
+    # Best solution
     cur_best_solution = maximum(this.pop)
     if isempty(this.best_solution) || cur_best_solution > this.best_solution[1]
       this.best_solution = [deepcopy(cur_best_solution)]
@@ -121,10 +151,45 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
   return best_fitness, mean_fitness
 end
 
+### Multi Objective GA ###
+
+function dominationFrontier(this::GeneticAlgorithmType)
+  frontier = typeof(this.best_solution)()
+  for ind in this.pop
+    dominated = false
+    for ind2 in this.pop
+      if ind2 > ind
+        dominated = true
+        break
+      end
+    end
+    if !dominated
+      push!(frontier, ind)
+    end
+  end
+  return frontier
+end
+
+function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}, max_size::Integer) where {IndType}
+  x_dominated = fill(false, length(x))
+  y_dominated = fill(false, length(y))
+
+  for indx in eachindex(x), indy in eachindex(y)
+    if x[indx] > y[indy]
+      y_dominated[indy] = true
+    elseif y[indy] > x[indx]
+      x_dominated[indx] = true
+    end
+  end
+
+  x_non_dominated = x[filter(x -> !x_dominated[x], eachindex(x))]
+  y_non_dominated = y[filter(x -> !y_dominated[x], eachindex(y))]
+  res = [x_non_dominated..., y_non_dominated...]
+  return res[1:min(length(res), max_size)]
+end
+
 function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
-  # Create initial population
-  Population.clear(this.pop)
-  GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
+ 	initialize(this)
 
   # Main loop
   @time for it = 1 : num_it
@@ -133,9 +198,7 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       show(this.pop)
     end
 
-    ind_args = Population.getIndArgs(this.pop)
-    pop_fit = Population.getFitFunction(this.pop)
-    new_pop = typeof(this.pop)(ind_args, pop_fit)
+    new_pop = newGeneration(this.pop)
 
     # Population sorting
     cur_individuals = [(this.pop[i], i) for i in eachindex(this.pop)]
@@ -161,44 +224,24 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
                        for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]
                         
     # Selection
-    child_num = this.pop_size - this.elite_size
-    parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
+    parents_group, child_num = selection(this, cur_individuals)
 
     # Crossover
-    childs = typeof(this.pop).parameters[1][]
-    for parents in parents_group
-      res_ch = GACrossover.crossover(parents..., this.cross_args...)
-      push!(childs, res_ch...)
-      length(childs) < child_num || break
-    end
-    childs = childs[1:child_num]
+    childs = crossover(this, parents_group, child_num)
 
     # Mutation
-    for child in childs
-      Population.insertIndividual!(new_pop, GAMutation.mutate!(child, this.mut_args...))
-    end
+    mutation(this, new_pop, childs)
 
     # Elitism
     for ind in @view vcat(sorted_individuals...)[1:this.elite_size]
       Population.insertIndividual!(new_pop, this.pop[ind]...)
     end
 
-    # New generation
-    Population.evalFitness!(new_pop)
-    this.pop = new_pop
-    cur_best_solution = typeof(this.best_solution)()
-    for ind in this.pop
-      dominated = false
-      for ind2 in this.pop
-        if ind2 > ind
-          dominated = true
-          break
-        end
-      end
-      if !dominated
-        push!(cur_best_solution, ind)
-      end
-    end
+    # New generation evaluation
+    evalNewGen(this, new_pop)
+
+    # Best solution
+    cur_best_solution = dominationFrontier(this)
     this.best_solution = dominationIntersection(this.best_solution, cur_best_solution, Population.getPopSize(this.pop)) 
     if log > 0 && (it - 1) % log == 0
       println(it, " -> Fitness: (", length(this.best_solution), ")")
@@ -207,22 +250,46 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
   return this.best_solution
 end
 
-function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}, max_size::Integer) where {IndType}
-  x_dominated = fill(false, length(x))
-  y_dominated = fill(false, length(y))
+### NSGA II ###
 
-  for indx in eachindex(x), indy in eachindex(y)
-    if x[indx] > y[indy]
-      y_dominated[indy] = true
-    elseif y[indy] > x[indx]
-      x_dominated[indx] = true
+function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+ 	initialize(this)
+
+  # Main loop
+  @time for it = 1 : num_it
+    if Debug.ga_debug
+      println("----- Generation ", it, " -----\n")
+      show(this.pop)
+    end
+
+    new_pop = newGeneration(this.pop)
+
+    # Population sorting
+    
+                        
+    # Selection
+    parents_group, child_num = selection(this, cur_individuals)
+
+    # Crossover
+    childs = crossover(this, parents_group, child_num)
+
+    # Mutation
+    mutation(this, new_pop, childs)
+
+    # Elitism
+    
+
+    # New generation evaluation
+    evalNewGen(this, new_pop)
+
+    # Best solution
+    cur_best_solution = dominationFrontier(this)
+    
+    if log > 0 && (it - 1) % log == 0
+      println(it, " -> Fitness: (", length(this.best_solution), ")")
     end
   end
-
-  x_non_dominated = x[filter(x -> !x_dominated[x], eachindex(x))]
-  y_non_dominated = y[filter(x -> !y_dominated[x], eachindex(y))]
-  res = [x_non_dominated..., y_non_dominated...]
-  return res[1:min(length(res), max_size)]
+  return this.best_solution
 end
 
 end
