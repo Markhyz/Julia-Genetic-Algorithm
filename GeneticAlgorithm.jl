@@ -58,6 +58,7 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
   end
 
   # Create initial population
+  Population.clear(this.pop)
   GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
 
   # Main loop
@@ -122,6 +123,7 @@ end
 
 function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   # Create initial population
+  Population.clear(this.pop)
   GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
 
   # Main loop

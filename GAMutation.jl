@@ -10,6 +10,7 @@ using Parallel
 
 abstract type BitFlipMutation end
 abstract type UniformMutation end
+abstract type SwapMutation end
 
 function mutate!(ind::BinaryIndividual.AbstractBinaryIndividual, ::Type{BitFlipMutation},  mr::Float64)
 
@@ -45,6 +46,28 @@ function mutate!(ind::RealIndividual.AbstractRealIndividual, ::Type{UniformMutat
 
   Debug.ga_debug && println("After mutation: ", ind[:], "\n")
   Debug.ga_debug && println("----- Uniform End -----\n")
+
+  return ind
+end
+
+function mutate!(ind::Individual.AbstractIndividual, ::Type{SwapMutation},  mr::Float64)
+
+  Debug.ga_debug && println("----- Swap -----\n")
+  Debug.ga_debug && println("Before mutation: ", ind[:])
+
+  for i in eachindex(ind)
+    pr = Parallel.threadRand()
+    if pr < mr
+      idx = Parallel.threadRand(1:(Individual.getNumGenes(ind) - 1)) + i
+      if idx > Individual.getNumGenes(ind)
+        idx = idx - Individual.getNumGenes(ind)
+      end
+      ind[i], ind[idx] = ind[idx], ind[i]
+    end
+  end
+
+  Debug.ga_debug && println("After mutation: ", ind[:], "\n")
+  Debug.ga_debug && println("----- Swap End -----\n")
 
   return ind
 end

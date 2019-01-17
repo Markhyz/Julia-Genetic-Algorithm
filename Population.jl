@@ -27,6 +27,12 @@ function build(ind_type::Type, ind_args::Tuple, f::Fitness.AbstractFitness{N}) w
   return ind_args, Vector{ind_type}(), f, Vector{NTuple{N, Float64}}(), Vector{Bool}()
 end
 
+function clear(this::AbstractPopulation{IndType}) where {IndType}
+  empty!(this.pop)
+  empty!(this.pop_fit)
+  empty!(this.fit_refresh)
+end
+
 function getPopSize(this::AbstractPopulation)
   return length(this.pop)   
 end

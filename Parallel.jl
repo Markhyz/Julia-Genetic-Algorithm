@@ -11,4 +11,8 @@ function threadRand(args...)
     return rand(GLOBAL_THREAD_RNG[Threads.threadid()], args...)
 end
 
+function threadShuffle(args...)
+    return shuffle(GLOBAL_THREAD_RNG[Threads.threadid()], args...)
+end
+
 end
