@@ -8,10 +8,11 @@ using Individual
 using Fitness
 
 IndFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, NTuple{N, Float64} where N}
+CrowdFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, Int64, Float64}
 
 abstract type AbstractPopulation{IndType <: Individual.AbstractIndividual} <: AbstractArray{Tuple{IndType, NTuple{N, Float64} where N}, 1} end
 
-mutable struct PopulationType{IndType} <: AbstractPopulation{IndType}
+struct PopulationType{IndType} <: AbstractPopulation{IndType}
   ind_args::Tuple
   pop::Vector{IndType}
   fitness::Fitness.AbstractFitness{N} where N
@@ -109,6 +110,7 @@ end
 
 function Base.setindex!(this::AbstractPopulation, value::IndFitType, pos::Int64)
   this.pop[pos], this.pop_fit[pos] = value
+  this.fit_refresh[pos] = false
 end
 
 function Base.firstindex(this::AbstractPopulation)
@@ -121,7 +123,7 @@ end
 
 function Base.:<(x::IndFitType{IndType}, y::IndFitType{IndType}) where {IndType}
   fit_size = length(x[2])
-  fit_size > 1 || return x[2][1] < y[2][1]
+  fit_size > 1 || return x[2] < y[2]
   x[2] != y[2] || return false
   for i in eachindex(x[2])
     x[2][i] <= y[2][i] || return false
@@ -131,6 +133,31 @@ end
 
 function Base.isless(x::IndFitType, y::IndFitType)
   return x < y
+end
+
+function Base. ==(x::IndFitType{IndType}, y::IndFitType{IndType}) where {IndType}
+  return x[2] == y[2]
+end
+
+function Base.isequal(x::IndFitType, y::IndFitType)
+  return x == y
+end
+
+function Base.:<(x::CrowdFitType{IndType}, y::CrowdFitType{IndType}) where {IndType}
+  x[2] != y[2] || return x[3] < y[3]
+  return x[2] > y[2]
+end
+
+function Base.isless(x::CrowdFitType, y::CrowdFitType)
+  return x < y
+end
+
+function Base. ==(x::CrowdFitType{IndType}, y::CrowdFitType{IndType}) where {IndType}
+  return x[2:3] ==  y[2:3]
+end
+
+function Base.isequal(x::CrowdFitType, y::CrowdFitType)
+  return x == y
 end
 
 function Base.maximum(this::AbstractPopulation)

@@ -59,20 +59,19 @@ function newGeneration(pop::PopType) where {PopType}
   return new_pop
 end
 
-function selection(this::GeneticAlgorithmType, cur_individuals::Vector{<: Population.IndFitType{IndType}}) where {IndType}
-  child_num = this.pop_size - this.elite_size
-  parents_group = GASelection.selectParents(cur_individuals, child_num, this.sel_args...)
-  return parents_group, child_num
+function selection(this::GeneticAlgorithmType, cur_individuals::Vector{<: Union{Population.IndFitType{IndType}, Population.CrowdFitType{IndType}}}) where {IndType}
+  parents_group = GASelection.selectParents(cur_individuals, this.pop_size, this.sel_args...)
+  return parents_group
 end
 
-function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndType, IndType}}, child_num::Integer) where {IndType}
+function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndType, IndType}}) where {IndType}
   childs = typeof(this.pop).parameters[1][]
   for parents in parents_group
     res_ch = GACrossover.crossover(parents..., this.cross_args...)
     push!(childs, res_ch...)
-    length(childs) < child_num || break
+    length(childs) < this.pop_size || break
   end
-  childs = childs[1:child_num]
+  childs = childs[1:this.pop_size]
   return childs
 end
 
@@ -84,7 +83,7 @@ end
 
 function evalNewGen(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation)
   Population.evalFitness!(new_pop)
-  this.pop = new_pop
+  this.pop[:] = new_pop[:]
 end
 
 ### Single Objective GA ###
@@ -115,17 +114,17 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
     sort!(cur_individuals; rev = true)
 
     # Selection
-    parents_group, child_num = selection(this, cur_individuals)
+    parents_group = selection(this, cur_individuals)
 
     # Crossover
-    childs = crossover(this, parents_group, child_num)
+    childs = crossover(this, parents_group)
 
     # Mutation
    	mutation(this, new_pop, childs)
 
     # Elitism
-    for (ind, fit) in @view cur_individuals[1:this.elite_size]
-      Population.insertIndividual!(new_pop, ind, fit)
+    for ind = 1:this.elite_size
+      new_pop[ind] = cur_individuals[ind]
     end
 
     # New generation evaluation
@@ -189,6 +188,7 @@ function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Arr
 end
 
 function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+  # Create initial population
  	initialize(this)
 
   # Main loop
@@ -198,6 +198,7 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       show(this.pop)
     end
 
+    # Create clean population
     new_pop = newGeneration(this.pop)
 
     # Population sorting
@@ -220,21 +221,22 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       cur_individuals = cur_individuals[filter(x -> dominated[x], eachindex(cur_individuals))]
       push!(sorted_individuals, frontier)
     end
-    cur_individuals = [(this.pop[ind][1], (Float64(-i),))
-                       for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]
-                        
+    cur_individuals = [(this.pop[ind][1], i, 0.0)
+                       for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]       
+   
     # Selection
-    parents_group, child_num = selection(this, cur_individuals)
+    parents_group = selection(this, cur_individuals)
 
     # Crossover
-    childs = crossover(this, parents_group, child_num)
+    childs = crossover(this, parents_group)
 
     # Mutation
     mutation(this, new_pop, childs)
 
     # Elitism
-    for ind in @view vcat(sorted_individuals...)[1:this.elite_size]
-      Population.insertIndividual!(new_pop, this.pop[ind]...)
+    elite = vcat(sorted_individuals...)
+    for ind = 1:this.elite_size
+      new_pop[ind] = this.pop[elite[ind]]
     end
 
     # New generation evaluation
@@ -252,8 +254,78 @@ end
 
 ### NSGA II ###
 
-function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+function crowdDistance!(diver::Vector{Float64}, front::Vector{Int64}, individuals::Vector{<: Population.IndFitType}, this::GeneticAlgorithmType)
+  for k = 1:Fitness.getSize(Population.getFitFunction(this.pop))
+    k_fit_order = [(individuals[ind][2][k], ind) for ind in front]
+    sort!(k_fit_order)
+    diver[k_fit_order[1][2]] = Inf
+    k_min = k_fit_order[1][1]
+    diver[k_fit_order[end][2]] = Inf
+    k_max = k_fit_order[end][1]
+    for idx = 2:(length(k_fit_order) - 1)
+			ind = k_fit_order[idx][2]
+      diver[ind] = diver[ind] + (k_fit_order[idx + 1][1] - k_fit_order[idx - 1][1]) / (k_max - k_min)
+    end
+  end
+end
+
+function nonDominatedSorting(this::GeneticAlgorithmType, individuals::Vector{<: Population.IndFitType})
+  sorted_individuals = Array{Int64, 1}[]
+  domination = fill(Int64[], length(individuals))
+  dominated = zeros(length(individuals))
+  diversity = zeros(Float64, length(individuals))
+  frontier = Int64[]
+
+  dominate = function (i, j)
+    if individuals[i] > individuals[j]
+      dominated[j] = dominated[j] + 1
+      push!(domination[i], j)
+    end
+  end
+  for i in eachindex(individuals)
+    for j = (i + 1):length(individuals)
+    	dominate(i, j)
+      dominate(j, i)
+    end
+    if dominated[i] == 0
+      push!(frontier, i)
+    end
+  end
+
+  new_pop_size = 0
+  while !isempty(frontier) && new_pop_size + length(frontier) <= this.pop_size
+    new_frontier = Int64[]
+    crowdDistance!(diversity, frontier, individuals, this)
+    new_pop_size = new_pop_size + length(frontier)
+    for ind in frontier
+      for i in domination[ind]
+        dominated[i] = dominated[i] - 1
+        if dominated[i] == 0
+          push!(new_frontier, i)
+        end
+      end
+    end
+    push!(sorted_individuals, frontier)
+    frontier = new_frontier
+  end
+  if new_pop_size < this.pop_size
+    crowdDistance!(diversity, frontier, individuals, this)
+		remain = this.pop_size - new_pop_size
+		cur_ind = [(diversity[ind], ind) for ind in frontier]
+		sort!(cur_ind; rev = true)
+		push!(sorted_individuals, [ind for (diver, ind) in @view cur_ind[1:remain]])
+	end
+  
+  pop_diver = [diversity[ind] for front in sorted_individuals for ind in front]
+  return sorted_individuals, pop_diver
+end
+
+function evolveNSGA2!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+  # Create initial population
  	initialize(this)
+
+  # Initial population sorting
+  sorted_individuals, pop_diversity = nonDominatedSorting(this, this.pop[:])
 
   # Main loop
   @time for it = 1 : num_it
@@ -261,30 +333,34 @@ function evolveMO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
       println("----- Generation ", it, " -----\n")
       show(this.pop)
     end
-
+    
+    # Create clean population
     new_pop = newGeneration(this.pop)
 
-    # Population sorting
-    
-                        
     # Selection
-    parents_group, child_num = selection(this, cur_individuals)
+    cur_individuals = [(this.pop[ind][1], i, pop_diversity[ind])
+                       for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]         
+    parents_group = selection(this, cur_individuals)
 
     # Crossover
-    childs = crossover(this, parents_group, child_num)
+    childs = crossover(this, parents_group)
 
     # Mutation
     mutation(this, new_pop, childs)
 
-    # Elitism
-    
-
     # New generation evaluation
-    evalNewGen(this, new_pop)
-
-    # Best solution
-    cur_best_solution = dominationFrontier(this)
+    Population.evalFitness!(new_pop)
+    old_new_pop = vcat(this.pop[:], new_pop[:])
+    sorted_individuals, pop_diversity = nonDominatedSorting(this, old_new_pop)
+    idx = 1
+    for front in eachindex(sorted_individuals), ind in eachindex(sorted_individuals[front])
+      this.pop[idx] = old_new_pop[sorted_individuals[front][ind]]
+      sorted_individuals[front][ind] = idx
+      idx = idx + 1
+    end
     
+    # Best solution
+    this.best_solution = [this.pop[ind] for ind in sorted_individuals[1]]
     if log > 0 && (it - 1) % log == 0
       println(it, " -> Fitness: (", length(this.best_solution), ")")
     end
