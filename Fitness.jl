@@ -4,8 +4,8 @@ module Fitness
 
 include("utility.jl")
 
-using Individual
-using RealIndividual
+using Chromosome
+using RealChromosome
 
 abstract type AbstractFitness{N} end
 

@@ -3,10 +3,10 @@ push!(LOAD_PATH, ".")
 module GeneticAlgorithm
 
 using Population
-using Individual
-using BinaryIndividual
-using IntegerIndividual
-using RealIndividual
+using Chromosome
+using BinaryChromosome
+using IntegerChromosome
+using RealChromosome
 using Fitness
 using GAInitialization
 using GASelection
@@ -19,9 +19,9 @@ using Plots
 include("utility.jl")
 
 mutable struct GeneticAlgorithmType
-  pop::Population.PopulationType{<: Individual.AbstractIndividual}
+  pop::Population.PopulationType{<: Chromosome.AbstractChromosome}
   pop_size::Integer
-  best_solution::Vector{Population.IndFitType{<: Individual.AbstractIndividual}}
+  best_solution::Vector{Population.IndFitType{<: Chromosome.AbstractChromosome}}
   elite_size::Integer 
   init_args::Tuple
   sel_args::Tuple
@@ -77,7 +77,7 @@ end
 
 function mutation(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation, childs::Vector{IndType}) where {IndType}
   for child in childs
-    Population.insertIndividual!(new_pop, GAMutation.mutate!(child, this.mut_args...))
+    Population.insertChromosome!(new_pop, GAMutation.mutate!(child, this.mut_args...))
   end
 end
 
@@ -320,7 +320,59 @@ function nonDominatedSorting(this::GeneticAlgorithmType, individuals::Vector{<: 
   return sorted_individuals, pop_diver
 end
 
+# Main algorithm
+
 function evolveNSGA2!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+  # Create initial population
+ 	initialize(this)
+
+  # Initial population sorting
+  sorted_individuals, pop_diversity = nonDominatedSorting(this, this.pop[:])
+
+  # Main loop
+  @time for it = 1 : num_it
+    if Debug.ga_debug
+      println("----- Generation ", it, " -----\n")
+      show(this.pop)
+    end
+    
+    # Create clean population
+    new_pop = newGeneration(this.pop)
+
+    # Selection
+    cur_individuals = [(this.pop[ind][1], i, pop_diversity[ind])
+                       for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]         
+    parents_group = selection(this, cur_individuals)
+
+    # Crossover
+    childs = crossover(this, parents_group)
+
+    # Mutation
+    mutation(this, new_pop, childs)
+
+    # New generation evaluation
+    Population.evalFitness!(new_pop)
+    old_new_pop = vcat(this.pop[:], new_pop[:])
+    sorted_individuals, pop_diversity = nonDominatedSorting(this, old_new_pop)
+    idx = 1
+    for front in eachindex(sorted_individuals), ind in eachindex(sorted_individuals[front])
+      this.pop[idx] = old_new_pop[sorted_individuals[front][ind]]
+      sorted_individuals[front][ind] = idx
+      idx = idx + 1
+    end
+    
+    # Best solution
+    this.best_solution = [this.pop[ind] for ind in sorted_individuals[1]]
+    if log > 0 && (it - 1) % log == 0
+      println(it, " -> Fitness: (", length(this.best_solution), ")")
+    end
+  end
+  return this.best_solution
+end
+
+# Garcia NSGA-II
+
+function evolveNSGA2Garcia!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   # Create initial population
  	initialize(this)
 

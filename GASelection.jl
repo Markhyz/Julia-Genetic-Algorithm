@@ -4,7 +4,6 @@ module GASelection
 
 using Debug
 using Population
-using Individual
 using Random
 using Parallel
 

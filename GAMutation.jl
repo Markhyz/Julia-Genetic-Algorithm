@@ -3,16 +3,16 @@ push!(LOAD_PATH, ".")
 module GAMutation
 
 using Debug
-using Individual
-using BinaryIndividual
-using RealIndividual
+using Chromosome
+using BinaryChromosome
+using RealChromosome
 using Parallel
 
 abstract type BitFlipMutation end
 abstract type UniformMutation end
 abstract type SwapMutation end
 
-function mutate!(ind::BinaryIndividual.AbstractBinaryIndividual, ::Type{BitFlipMutation},  mr::Float64)
+function mutate!(ind::BinaryChromosome.AbstractBinaryChromosome, ::Type{BitFlipMutation},  mr::Float64)
 
   Debug.ga_debug && println("----- Bit Flip -----\n")
   Debug.ga_debug && println("Before mutation: ", ind[:])
@@ -30,7 +30,7 @@ function mutate!(ind::BinaryIndividual.AbstractBinaryIndividual, ::Type{BitFlipM
   return ind
 end
 
-function mutate!(ind::RealIndividual.AbstractRealIndividual, ::Type{UniformMutation}, mr::Float64, lb::Float64, ub::Float64)
+function mutate!(ind::RealChromosome.AbstractRealChromosome, ::Type{UniformMutation}, mr::Float64, lb::Float64, ub::Float64)
 
   Debug.ga_debug && println("----- Uniform -----\n")
   Debug.ga_debug && println("Before mutation: ", ind[:])
@@ -50,7 +50,7 @@ function mutate!(ind::RealIndividual.AbstractRealIndividual, ::Type{UniformMutat
   return ind
 end
 
-function mutate!(ind::Individual.AbstractIndividual, ::Type{SwapMutation},  mr::Float64)
+function mutate!(ind::Chromosome.AbstractChromosome, ::Type{SwapMutation},  mr::Float64)
 
   Debug.ga_debug && println("----- Swap -----\n")
   Debug.ga_debug && println("Before mutation: ", ind[:])
@@ -58,9 +58,9 @@ function mutate!(ind::Individual.AbstractIndividual, ::Type{SwapMutation},  mr::
   for i in eachindex(ind)
     pr = Parallel.threadRand()
     if pr < mr
-      idx = Parallel.threadRand(1:(Individual.getNumGenes(ind) - 1)) + i
-      if idx > Individual.getNumGenes(ind)
-        idx = idx - Individual.getNumGenes(ind)
+      idx = Parallel.threadRand(1:(Chromosome.getNumGenes(ind) - 1)) + i
+      if idx > Chromosome.getNumGenes(ind)
+        idx = idx - Chromosome.getNumGenes(ind)
       end
       ind[i], ind[idx] = ind[idx], ind[i]
     end

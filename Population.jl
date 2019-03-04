@@ -4,13 +4,13 @@ module Population
 
 include("utility.jl")  
 
-using Individual
+using Chromosome
 using Fitness
 
-IndFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, NTuple{N, Float64} where N}
-CrowdFitType{IndType <: Individual.AbstractIndividual} = Tuple{IndType, Int64, Float64}
+IndFitType{IndType <: Chromosome.AbstractChromosome} = Tuple{IndType, NTuple{N, Float64} where N}
+CrowdFitType{IndType <: Chromosome.AbstractChromosome} = Tuple{IndType, Int64, Float64}
 
-abstract type AbstractPopulation{IndType <: Individual.AbstractIndividual} <: AbstractArray{Tuple{IndType, NTuple{N, Float64} where N}, 1} end
+abstract type AbstractPopulation{IndType <: Chromosome.AbstractChromosome} <: AbstractArray{Tuple{IndType, NTuple{N, Float64} where N}, 1} end
 
 struct PopulationType{IndType} <: AbstractPopulation{IndType}
   ind_args::Tuple
@@ -38,7 +38,7 @@ function getPopSize(this::AbstractPopulation)
   return length(this.pop)   
 end
 
-function insertIndividual!(this::AbstractPopulation{IndType}, ind::IndType, fit::NTuple{N, Float64} = (NaN,)) where {IndType, N}
+function insertChromosome!(this::AbstractPopulation{IndType}, ind::IndType, fit::NTuple{N, Float64} = (NaN,)) where {IndType, N}
   if N != Fitness.getSize(this.fitness)
     fit = tuple(fill(NaN, Fitness.getSize(this.fitness))...)
   end
@@ -47,11 +47,11 @@ function insertIndividual!(this::AbstractPopulation{IndType}, ind::IndType, fit:
   push!(this.fit_refresh, fit[1] === NaN)
 end
 
-function getIndividual(this::AbstractPopulation, pos::Int64)
+function getChromosome(this::AbstractPopulation, pos::Int64)
   return (this.pop[pos], this.pop_fit[pos])
 end
 
-function refreshIndividual!(this::AbstractPopulation, pos::Int64)
+function refreshChromosome!(this::AbstractPopulation, pos::Int64)
   if this.fit_refresh[pos]
     this.fit_refresh[pos] = false
     this.pop_fit[pos] = this.fitness(this.pop[pos])
@@ -60,7 +60,7 @@ end
 
 function evalFitness!(this::AbstractPopulation)
   for i = 1 : length(this.pop)
-    refreshIndividual!(this, i)
+    refreshChromosome!(this, i)
   end
 end
 
@@ -75,15 +75,15 @@ end
 function populateRandom!(this::AbstractPopulation{IndType}, num_ind::Int64) where {IndType}
   for i = 1 : num_ind
     new_ind = IndType(this.ind_args...)
-    Individual.generateRandom!(new_ind)
-    insertIndividual!(this, new_ind)
+    Chromosome.generateRandom!(new_ind)
+    insertChromosome!(this, new_ind)
   end
 end
 
 function Base.show(io::IO, this::AbstractPopulation)
   println("Population ", getPopSize(this), "\n")
   for i = 1 : getPopSize(this)
-    print("Individual ", i, ": [")
+    print("Chromosome ", i, ": [")
     for gene in this.pop[i]
       print(" ", gene)
     end

@@ -4,7 +4,7 @@ module GAInitialization
 
 using Population
 using Parallel
-using Individual
+using Chromosome
 
 abstract type InitRandom end
 abstract type InitRandomOne end
@@ -17,7 +17,7 @@ end
 function initializePopulation!(pop::Population.AbstractPopulation{IndType}, pop_size::Integer, ::Type{InitRandomOne}) where {IndType}
   for i = 1:pop_size
     new_ind = IndType(Population.getIndArgs(pop)...)
-    order = Parallel.threadShuffle(Array(1:Individual.getNumGenes(new_ind)))
+    order = Parallel.threadShuffle(Array(1:Chromosome.getNumGenes(new_ind)))
     rem = 1.0
     for gene in @view order[1:end-1]
       val = Parallel.threadRand() * rem
@@ -28,7 +28,7 @@ function initializePopulation!(pop::Population.AbstractPopulation{IndType}, pop_
     if abs(sum(new_ind) - 1.0) > 1e-9
       throw("$(sum(new_ind)) NANI")
     end
-    Population.insertIndividual!(pop, new_ind)
+    Population.insertChromosome!(pop, new_ind)
   end
   Population.evalFitness!(pop)
 end
