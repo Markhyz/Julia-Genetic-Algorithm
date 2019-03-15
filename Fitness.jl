@@ -7,6 +7,8 @@ include("utility.jl")
 using Chromosome
 using RealChromosome
 
+FitnessType = NTuple{N, Float64} where N
+
 abstract type AbstractFitness{N} end
 
 @define Fitness begin

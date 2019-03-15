@@ -19,9 +19,9 @@ using Plots
 include("utility.jl")
 
 mutable struct GeneticAlgorithmType
-  pop::Population.PopulationType{<: Chromosome.AbstractChromosome}
+  pop::Population.PopulationType
   pop_size::Integer
-  best_solution::Vector{Population.IndFitType{<: Chromosome.AbstractChromosome}}
+  best_solution::Vector{Population.StandardFit{<: Population.IndividualType}}
   elite_size::Integer 
   init_args::Tuple
   sel_args::Tuple
@@ -40,7 +40,8 @@ end
 function build(ind_args::Tuple, fit::Fitness.AbstractFitness, ps::Integer, es::Integer, 
                i_a::Tuple, s_a::Tuple, c_a::Tuple, m_a::Tuple)
   ps > 1 || error("GA: Population size must be greater than 1")
-  return Population.PopulationType{ind_args[1]}(ind_args[2:end], fit), ps, Vector{Population.IndFitType{ind_args[1]}}(), es, i_a, s_a, c_a, m_a
+  pop_type = Tuple{getindex.(ind_args, 1)...}
+  return Population.PopulationType{pop_type}(tuple([v[2:end] for v in ind_args]...), fit), ps, Vector{Population.StandardFit{pop_type}}(), es, i_a, s_a, c_a, m_a
 end
 
 function getBestSolution(this::GeneticAlgorithmType)
@@ -49,35 +50,58 @@ end
 
 function initialize(this::GeneticAlgorithmType)
   Population.clear(this.pop)
-  GAInitialization.initializePopulation!(this.pop, this.pop_size, this.init_args...)
+  pop_type = typeof(this.pop).parameters[1]
+  chromo_types = pop_type.parameters
+  num_chromo = length(chromo_types)
+  for i = 1 : this.pop_size
+    new_ind = Vector{Chromosome.AbstractChromosome}(undef, num_chromo)
+    for j = 1 : num_chromo
+      new_ind[j] = chromo_types[j](Population.getIndArgs(this.pop)[j]...)
+      GAInitialization.initializeChromosome!(new_ind[j], this.init_args[j]...)
+    end
+    Population.insertIndividual!(this.pop, tuple(new_ind...))
+  end
+  Population.evalFitness!(this.pop)
 end
 
-function newGeneration(pop::PopType) where {PopType}
+function newGeneration(pop::PopT) where {PopT}
   ind_args = Population.getIndArgs(pop)
   pop_fit = Population.getFitFunction(pop)
-  new_pop = PopType(ind_args, pop_fit)
+  new_pop = PopT(ind_args, pop_fit)
   return new_pop
 end
 
-function selection(this::GeneticAlgorithmType, cur_individuals::Vector{<: Union{Population.IndFitType{IndType}, Population.CrowdFitType{IndType}}}) where {IndType}
+function selection(this::GeneticAlgorithmType, cur_individuals::Vector{<: Population.GeneticAlgorithmFit{IndT}}) where {IndT}
   parents_group = GASelection.selectParents(cur_individuals, this.pop_size, this.sel_args...)
   return parents_group
 end
 
-function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndType, IndType}}) where {IndType}
-  childs = typeof(this.pop).parameters[1][]
+function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndT, IndT}}) where {IndT}
+  child_type = typeof(this.pop).parameters[1]
+  childs = child_type[]
+  chromo_num = length(child_type.parameters)
   for parents in parents_group
-    res_ch = GACrossover.crossover(parents..., this.cross_args...)
-    push!(childs, res_ch...)
+    res_ch = []
+    for i = 1 : chromo_num
+      ch_chromo = GACrossover.crossover(getindex.(parents, i)..., this.cross_args[i]...)
+      push!(res_ch, ch_chromo)
+    end
+    push!(childs, [tuple(getindex.(res_ch, i)...) for i = 1:chromo_num]...)
     length(childs) < this.pop_size || break
   end
   childs = childs[1:this.pop_size]
   return childs
 end
 
-function mutation(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation, childs::Vector{IndType}) where {IndType}
+function mutation(this::GeneticAlgorithmType, new_pop::Population.AbstractPopulation, childs::Vector{IndT}) where {IndT}
+  child_type = typeof(this.pop).parameters[1]
+  chromo_num = length(child_type.parameters)
   for child in childs
-    Population.insertChromosome!(new_pop, GAMutation.mutate!(child, this.mut_args...))
+    mut_child = Array{Chromosome.AbstractChromosome}(undef, chromo_num)
+    for i = 1:chromo_num
+      mut_child[i] = GAMutation.mutate!(child[i], this.mut_args[i]...)
+    end
+    Population.insertIndividual!(new_pop, tuple(mut_child...))
   end
 end
 
@@ -169,7 +193,7 @@ function dominationFrontier(this::GeneticAlgorithmType)
   return frontier
 end
 
-function dominationIntersection(x::Array{Population.IndFitType{IndType}}, y::Array{Population.IndFitType{IndType}}, max_size::Integer) where {IndType}
+function dominationIntersection(x::Array{Population.StandardFit{IndT}}, y::Array{Population.StandardFit{IndT}}, max_size::Integer) where {IndT}
   x_dominated = fill(false, length(x))
   y_dominated = fill(false, length(y))
 
@@ -254,7 +278,7 @@ end
 
 ### NSGA II ###
 
-function crowdDistance!(diver::Vector{Float64}, front::Vector{Int64}, individuals::Vector{<: Population.IndFitType}, this::GeneticAlgorithmType)
+function crowdDistance!(diver::Vector{Float64}, front::Vector{Int64}, individuals::Vector{<: Population.StandardFit}, this::GeneticAlgorithmType)
   for k = 1:Fitness.getSize(Population.getFitFunction(this.pop))
     k_fit_order = [(individuals[ind][2][k], ind) for ind in front]
     sort!(k_fit_order)
@@ -269,7 +293,7 @@ function crowdDistance!(diver::Vector{Float64}, front::Vector{Int64}, individual
   end
 end
 
-function nonDominatedSorting(this::GeneticAlgorithmType, individuals::Vector{<: Population.IndFitType})
+function nonDominatedSorting(this::GeneticAlgorithmType, individuals::Vector{<: Population.StandardFit})
   sorted_individuals = Array{Int64, 1}[]
   domination = fill(Int64[], length(individuals))
   dominated = zeros(length(individuals))
@@ -370,9 +394,9 @@ function evolveNSGA2!(this::GeneticAlgorithmType, num_it::Integer, log::Integer 
   return this.best_solution
 end
 
-# Garcia NSGA-II
+# NSGA-II PO
 
-function evolveNSGA2Garcia!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
+function evolveNSGA2PO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   # Create initial population
  	initialize(this)
 

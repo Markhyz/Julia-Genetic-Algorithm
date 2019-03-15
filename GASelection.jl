@@ -9,9 +9,9 @@ using Parallel
 
 abstract type Tournament end
 
-function selectParents(individuals::Vector{<: Union{Population.IndFitType{IndType}, Population.CrowdFitType{IndType}}},  
-  										 parent_num::Integer, ::Type{Tournament}, tour_size::Integer) where {IndType}
-  parents = Vector{Tuple{IndType, IndType}}(undef, parent_num)
+function selectParents(individuals::Vector{<: Population.GeneticAlgorithmFit{IndT}},  
+  										 parent_num::Integer, ::Type{Tournament}, tour_size::Integer) where {IndT}
+  parents = Vector{Tuple{IndT, IndT}}(undef, parent_num)
   choices = [(individuals[i], i) for i = eachindex(individuals)]
 
   Debug.ga_debug && println("----- Tournament Start -----\n")

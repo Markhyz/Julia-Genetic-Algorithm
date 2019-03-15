@@ -10,7 +10,7 @@ using Parallel
 abstract type PointCrossover end
 abstract type AritmeticCrossover end
 
-function crossover(p1::IndType, p2::IndType, ::Type{PointCrossover}, cr::Float64) where {IndType <: Chromosome.AbstractChromosome}
+function crossover(p1::ChromoT, p2::ChromoT, ::Type{PointCrossover}, cr::Float64) where {ChromoT <: Chromosome.AbstractChromosome}
   gene_num = Chromosome.getNumGenes(p1)
   c1, c2 = deepcopy(p1), deepcopy(p2)
   
@@ -47,7 +47,7 @@ function crossover(p1::IndType, p2::IndType, ::Type{PointCrossover}, cr::Float64
   return (c1, c2)
 end
 
-function crossover(p1::IndType, p2::IndType, ::Type{AritmeticCrossover}, cr::Float64) where {IndType <: RealChromosome.AbstractRealChromosome}
+function crossover(p1::ChromoT, p2::ChromoT, ::Type{AritmeticCrossover}, cr::Float64) where {ChromoT <: RealChromosome.AbstractRealChromosome}
   c1, c2 = deepcopy(p1), deepcopy(p2)
   
   pr = Parallel.threadRand()
