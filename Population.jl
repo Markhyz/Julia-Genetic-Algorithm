@@ -79,9 +79,9 @@ end
 function Base.show(io::IO, this::AbstractPopulation)
   println("Population ", getPopSize(this), "\n")
   for i = 1 : getPopSize(this)
-    print("Chromosome ", i, ": [")
-    for gene in this.pop[i][1]
-      print(" ", gene)
+    println("Chromosome ", i, ": [")
+    for chromosome in this.pop[i]
+      println(chromosome[:])
     end
     println(" ] -> ", this.pop_fit[i])
   end

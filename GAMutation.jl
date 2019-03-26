@@ -7,10 +7,14 @@ using Chromosome
 using BinaryChromosome
 using RealChromosome
 using Parallel
+using Random
+using Distributions
 
 abstract type BitFlipMutation end
 abstract type UniformMutation end
 abstract type SwapMutation end
+abstract type GaussMutation end
+abstract type BitFlipPOMutation end
 
 function mutate!(ind::BinaryChromosome.AbstractBinaryChromosome, ::Type{BitFlipMutation},  mr::Float64)
 
@@ -68,6 +72,48 @@ function mutate!(ind::Chromosome.AbstractChromosome, ::Type{SwapMutation},  mr::
 
   Debug.ga_debug && println("After mutation: ", ind[:], "\n")
   Debug.ga_debug && println("----- Swap End -----\n")
+
+  return ind
+end
+
+function mutate!(ind::Chromosome.AbstractChromosome, ::Type{GaussMutation},  mr::Float64, σ::Float64)
+
+  Debug.ga_debug && println("----- Gauss -----\n")
+  Debug.ga_debug && println("Before mutation: ", ind[:])
+
+  normal_dist = Normal(0.0, σ)
+
+  for i in eachindex(ind)
+    pr = Parallel.threadRand()
+    if pr < mr
+      Δ, = rand(normal_dist, 1)
+      ind[i] = max(min(ind[i] + Δ, 1.0), 0.0)
+    end
+  end
+
+  Debug.ga_debug && println("After mutation: ", ind[:], "\n")
+  Debug.ga_debug && println("----- Gauss End -----\n")
+
+  return ind
+end
+
+function mutate!(ind::Tuple{BinaryChromosome.AbstractBinaryChromosome, RealChromosome.AbstractRealChromosome}, ::Type{BitFlipPOMutation},  mr::Float64)
+
+  Debug.ga_debug && println("----- Bit Flip -----\n")
+  Debug.ga_debug && println("Before mutation: ", ind[:])
+
+  for i in eachindex(ind[1])
+    pr = Parallel.threadRand()
+    if pr < mr
+      ind[i] = xor(ind[1][i], 1)
+      if ind[1][i] == 1
+        ind[2][i] = Parallel.threadRand()
+      end
+    end
+  end
+
+  Debug.ga_debug && println("After mutation: ", ind[:], "\n")
+  Debug.ga_debug && println("----- Bit Flip End -----\n")
 
   return ind
 end

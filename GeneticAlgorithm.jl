@@ -396,9 +396,108 @@ end
 
 # NSGA-II PO
 
+function repairPO!(this::GeneticAlgorithmType, pop::Population.AbstractPopulation)
+  k = Population.getFitFunction(pop).k
+  for i = 1 : this.pop_size
+    cur_ind = pop[i][1]
+    gene_num = Chromosome.getNumGenes(cur_ind[1])
+    for j = 1 : gene_num
+      if cur_ind[2][j] < 1e-9
+        cur_ind[2][j] = cur_ind[2][j] + 1e-9
+      end
+    end
+    cur_k = sum(cur_ind[1])
+    cur_w = sort([ (cur_ind[2][i], i) for i in eachindex(cur_ind[2]) ])
+    
+    j = 1
+    while cur_k > k && j <= gene_num
+      w, ind = cur_w[j]
+      if cur_ind[1][ind] == 1
+        cur_ind[1][ind] = 0
+        cur_k = cur_k - 1
+      end
+      j = j + 1
+    end
+  
+    j = gene_num
+    while cur_k < k && j > 0
+      w, ind = cur_w[j]
+      if cur_ind[1][ind] == 0
+        cur_ind[1][ind] = 1
+        cur_k = cur_k + 1
+      end
+      j = j - 1
+    end
+
+    total_w = 0.0
+    for j in eachindex(cur_ind[1])
+      if cur_ind[1][j] == 1
+        total_w = total_w + cur_ind[2][j]
+      end
+    end
+
+    @assert total_w > 0
+
+    for j in eachindex(cur_ind[1])
+      if cur_ind[1][j] == 1
+        cur_ind[2][j] = cur_ind[2][j] / total_w
+      end
+    end
+    
+    try
+      @assert sum(cur_ind[1]) == k
+
+      w_t = 0
+      for j in eachindex(cur_ind[1])
+        if cur_ind[1][j] == 1
+          w_t = w_t + cur_ind[2][j]
+        end
+      end
+
+      @assert abs(w_t - 1.0) < 1e-9
+    catch err
+      println(cur_ind[1][:], " ", cur_ind[2][:])
+      println(sum(cur_ind[1]), ' ', sum(cur_ind[2]))
+      throw(err)
+    end
+  end
+end
+
+function initializeNSGA2PO!(this::GeneticAlgorithmType)
+  Population.clear(this.pop)
+  pop_type = typeof(this.pop).parameters[1]
+  chromo_types = pop_type.parameters
+  num_chromo = length(chromo_types)
+  for i = 1 : this.pop_size
+    new_ind = Vector{Chromosome.AbstractChromosome}(undef, num_chromo)
+    for j = 1 : num_chromo
+      new_ind[j] = chromo_types[j](Population.getIndArgs(this.pop)[j]...)
+      GAInitialization.initializeChromosome!(new_ind[j], this.init_args[j]...)
+    end
+    Population.insertIndividual!(this.pop, tuple(new_ind...))
+  end
+
+  repairPO!(this, this.pop)
+  
+  Population.evalFitness!(this.pop)
+end
+
+function crossoverNSGA2PO(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndT, IndT}}) where {IndT}
+  child_type = typeof(this.pop).parameters[1]
+  childs = child_type[]
+  for parents in parents_group
+    res_ch = GACrossover.crossover(parents..., this.cross_args[1]...)
+    res_ch2 = GACrossover.crossover(parents..., this.cross_args[1]...)
+    push!(childs, res_ch, res_ch2)
+    length(childs) < this.pop_size || break
+  end
+  childs = childs[1:this.pop_size]
+  return childs
+end
+
 function evolveNSGA2PO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0)
   # Create initial population
- 	initialize(this)
+ 	initializeNSGA2PO!(this)
 
   # Initial population sorting
   sorted_individuals, pop_diversity = nonDominatedSorting(this, this.pop[:])
@@ -419,12 +518,15 @@ function evolveNSGA2PO!(this::GeneticAlgorithmType, num_it::Integer, log::Intege
     parents_group = selection(this, cur_individuals)
 
     # Crossover
-    childs = crossover(this, parents_group)
+    childs = crossoverNSGA2PO(this, parents_group)
 
     # Mutation
     mutation(this, new_pop, childs)
 
     # New generation evaluation
+    
+    repairPO!(this, new_pop)
+    
     Population.evalFitness!(new_pop)
     old_new_pop = vcat(this.pop[:], new_pop[:])
     sorted_individuals, pop_diversity = nonDominatedSorting(this, old_new_pop)
