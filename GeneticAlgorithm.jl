@@ -7,6 +7,7 @@ using Chromosome
 using BinaryChromosome
 using IntegerChromosome
 using RealChromosome
+using CardinalityChromosome
 using Fitness
 using GAInitialization
 using GASelection

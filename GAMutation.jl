@@ -15,6 +15,7 @@ abstract type UniformMutation end
 abstract type SwapMutation end
 abstract type GaussMutation end
 abstract type BitFlipPOMutation end
+abstract type CardinalityPOMutation end
 
 function mutate!(ind::BinaryChromosome.AbstractBinaryChromosome, ::Type{BitFlipMutation},  mr::Float64)
 
@@ -114,6 +115,27 @@ function mutate!(ind::Tuple{BinaryChromosome.AbstractBinaryChromosome, RealChrom
 
   Debug.ga_debug && println("After mutation: ", ind[:], "\n")
   Debug.ga_debug && println("----- Bit Flip End -----\n")
+
+  return ind
+end
+
+function mutate!(ind::CardinalityChromosome.AbstractCardinalityChromosome, ::Type{CardinalityPOMutation},  mr::Float64)
+
+  Debug.ga_debug && println("----- Cardinality -----\n")
+  Debug.ga_debug && println("Before mutation: ", ind[:])
+
+  for i in eachindex(ind[1])
+    pr = Parallel.threadRand()
+    if pr < mr
+      ind[i] = xor(ind[1][i], 1)
+      if ind[1][i] == 1
+        ind[2][i] = Parallel.threadRand()
+      end
+    end
+  end
+
+  Debug.ga_debug && println("After mutation: ", ind[:], "\n")
+  Debug.ga_debug && println("----- Cardinality End -----\n")
 
   return ind
 end
