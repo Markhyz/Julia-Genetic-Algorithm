@@ -7,43 +7,47 @@ include("utility.jl")
 using Chromosome
 using Parallel
 
-abstract type AbstractCardinalityChromosome{GeneType <: Tuple{Integer, Float64}} <: Chromosome.AbstractChromosome{GeneType} end
+abstract type AbstractCardinalityChromosome <: Chromosome.AbstractChromosome{Tuple{Int64, Float64}} end
+
+GeneType = Tuple{Int64, Float64}
 
 @define CardinalityChromosome begin
   CardinalityChromosome.Chromosome.@Chromosome
 end
 
-struct CardinalityChromosomeType{GeneType} <: AbstractCardinalityChromosome{GeneType}
+struct CardinalityChromosomeType <: AbstractCardinalityChromosome
   @CardinalityChromosome
-  n::Integer
+  numAssets::Integer
 
-  function CardinalityChromosomeType{GeneType}(x...) where {GeneType}
+  function CardinalityChromosomeType(x...)
     args = build(x...)
     new(args[1], args[2], args[3], args[4])
   end
 end
 
-function build(n::Integer, x...)
-  return (Chromosome.build(x...)..., n)
+function build(numAssets::Integer, x...)
+  return (Chromosome.build(x...)..., numAssets)
 end
 
 function getCardinality(this::AbstractCardinalityChromosome)
-  return this.n
+  return Chromosome.getNumGenes(this)
+end
+
+function getNumAssets(this::AbstractCardinalityChromosome)
+  return this.numAssets
 end
 
 function Chromosome.generateRandom!(this::AbstractCardinalityChromosome)
-  k = Chromosome.getNumGenes(this)
-  order = Parallel.threadShuffle(Array(1:this.n))
+  card = getCardinality(this)
+  order = Parallel.threadShuffle(Array(1:this.numAssets))
 
   rem = 1.0
-  for idx = 1 : (k - 1)
-    this[idx][1] = order[idx]
-
+  for idx = 1 : (card - 1)
     val = Parallel.threadRand() * rem
-    this[idx][2] = val
+    this[idx] = (order[idx], val)
     rem = rem - val
   end
-  this[k] = (order[k], rem)
+  this[card] = (order[card], rem)
 end
 
 end

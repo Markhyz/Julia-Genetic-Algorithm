@@ -83,11 +83,14 @@ function crossover(this::GeneticAlgorithmType, parents_group::Vector{Tuple{IndT,
   chromo_num = length(child_type.parameters)
   for parents in parents_group
     res_ch = []
+    num_ch = -1
     for i = 1 : chromo_num
       ch_chromo = GACrossover.crossover(getindex.(parents, i)..., this.cross_args[i]...)
+      num_ch = length(ch_chromo)
       push!(res_ch, ch_chromo)
     end
-    push!(childs, [tuple(getindex.(res_ch, i)...) for i = 1:chromo_num]...)
+    res_ch = [tuple(getindex.(res_ch, i)...) for i = 1 : num_ch]
+    push!(childs, res_ch...)
     length(childs) < this.pop_size || break
   end
   childs = childs[1:this.pop_size]
@@ -123,7 +126,7 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
 
   # Create initial population
 	initialize(this)
-
+  println("asasasa")
   # Main loop
   @time for it = 1 : num_it
     if Debug.ga_debug
@@ -362,23 +365,23 @@ function evolveNSGA2!(this::GeneticAlgorithmType, num_it::Integer, log::Integer 
     end
     
     # Create clean population
-    new_pop = newGeneration(this.pop)
+    new_pop, t1 = @timed newGeneration(this.pop)
 
     # Selection
     cur_individuals = [(this.pop[ind][1], i, pop_diversity[ind])
                        for i in eachindex(sorted_individuals) for ind in sorted_individuals[i]]         
-    parents_group = selection(this, cur_individuals)
+    parents_group, t2 =  @timed selection(this, cur_individuals)
 
     # Crossover
-    childs = crossover(this, parents_group)
+    childs, t3 = @timed crossover(this, parents_group)
 
     # Mutation
-    mutation(this, new_pop, childs)
+    _, t4 = @timed mutation(this, new_pop, childs)
 
     # New generation evaluation
-    Population.evalFitness!(new_pop)
+    _, t5 = @timed Population.evalFitness!(new_pop)
     old_new_pop = vcat(this.pop[:], new_pop[:])
-    sorted_individuals, pop_diversity = nonDominatedSorting(this, old_new_pop)
+    (sorted_individuals, pop_diversity), t6 = @timed nonDominatedSorting(this, old_new_pop)
     idx = 1
     for front in eachindex(sorted_individuals), ind in eachindex(sorted_individuals[front])
       this.pop[idx] = old_new_pop[sorted_individuals[front][ind]]
@@ -389,13 +392,13 @@ function evolveNSGA2!(this::GeneticAlgorithmType, num_it::Integer, log::Integer 
     # Best solution
     this.best_solution = [this.pop[ind] for ind in sorted_individuals[1]]
     if log > 0 && (it - 1) % log == 0
-      println(it, " -> Fitness: (", length(this.best_solution), ")")
+      println(it, " -> Fitness: (", length(this.best_solution), ") ", t1, " ", t2, " ", t3, " ", t4, " ", t5, " ", t6)
     end
   end
   return this.best_solution
 end
 
-# NSGA-II PO
+##### NSGA-II PO #####
 
 function repairPO!(this::GeneticAlgorithmType, pop::Population.AbstractPopulation)
   k = Population.getFitFunction(pop).k

@@ -4,6 +4,7 @@ module GAMutation
 
 using Debug
 using Chromosome
+using CardinalityChromosome
 using BinaryChromosome
 using RealChromosome
 using Parallel
@@ -124,15 +125,47 @@ function mutate!(ind::CardinalityChromosome.AbstractCardinalityChromosome, ::Typ
   Debug.ga_debug && println("----- Cardinality -----\n")
   Debug.ga_debug && println("Before mutation: ", ind[:])
 
-  for i in eachindex(ind[1])
+  numAssets = CardinalityChromosome.getNumAssets(ind)
+  usedAssets = map(gene -> gene[1], ind)
+  freeAssets = filter(asset -> asset ∉ usedAssets, 1:numAssets)
+  numFreeAssets = length(freeAssets)
+
+  for i in eachindex(ind)
     pr = Parallel.threadRand()
     if pr < mr
-      ind[i] = xor(ind[1][i], 1)
-      if ind[1][i] == 1
-        ind[2][i] = Parallel.threadRand()
+      asset, weight = ind[i]
+      α = Parallel.threadRand()
+      if α > 0.5
+        newAssetIdx = Parallel.threadRand(1:numFreeAssets)
+        newAsset = freeAssets[newAssetIdx]
+        freeAssets[newAssetIdx] = asset
+        ind[i] = (newAsset, weight) 
+      else
+        Δ = Parallel.threadRandn() / 10
+        ind[i] = (asset, weight + Δ)
       end
     end
   end
+
+  δ = minimum(map(gene -> gene[2], ind))
+  total_weight = sum(gene -> gene[2] + δ, ind)
+  for idx in eachindex(ind)
+    asset, weight = ind[idx]
+    corrected_weight = weight + δ
+    @assert corrected_weight > -1e9
+    ind[idx] = (asset, corrected_weight / total_weight)
+  end
+
+  ### Assert if individual is valid ###
+  total_weight = sum(gene -> gene[2], ind)
+  @assert abs(total_weight - 1.0) <= 1e-9
+
+  used = zeros(Bool, CardinalityChromosome.getNumAssets(ind))
+  for (asset, weight) in ind
+    @assert !used[asset]
+    used[asset] = true
+  end
+  ### End of assertion ###
 
   Debug.ga_debug && println("After mutation: ", ind[:], "\n")
   Debug.ga_debug && println("----- Cardinality End -----\n")
