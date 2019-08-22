@@ -126,7 +126,7 @@ function evolveSO!(this::GeneticAlgorithmType, num_it::Integer, log::Integer = 0
 
   # Create initial population
 	initialize(this)
-  println("asasasa")
+
   # Main loop
   @time for it = 1 : num_it
     if Debug.ga_debug

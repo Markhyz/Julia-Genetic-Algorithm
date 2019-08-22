@@ -148,11 +148,11 @@ function mutate!(ind::CardinalityChromosome.AbstractCardinalityChromosome, ::Typ
   end
 
   δ = minimum(map(gene -> gene[2], ind))
-  total_weight = sum(gene -> gene[2] + δ, ind)
+  total_weight = sum(gene -> gene[2] + abs(δ), ind)
   for idx in eachindex(ind)
     asset, weight = ind[idx]
-    corrected_weight = weight + δ
-    @assert corrected_weight > -1e9
+    corrected_weight = weight + abs(δ)
+    @assert corrected_weight > -1e-9
     ind[idx] = (asset, corrected_weight / total_weight)
   end
 
