@@ -135,7 +135,7 @@ function mutate!(ind::CardinalityChromosome.AbstractCardinalityChromosome, ::Typ
     if pr < mr
       asset, weight = ind[i]
       α = Parallel.threadRand()
-      if α > 0.5
+      if α > 0.5 && numFreeAssets > 0
         newAssetIdx = Parallel.threadRand(1:numFreeAssets)
         newAsset = freeAssets[newAssetIdx]
         freeAssets[newAssetIdx] = asset

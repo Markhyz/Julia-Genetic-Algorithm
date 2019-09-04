@@ -132,9 +132,14 @@ function crossover(p1::CardinalityChromosome.CardinalityChromosomeType,
     end
 
     total_weight = sum(gene -> gene[2], child)
-    for idx in eachindex(child)
-      asset, weight = child[idx]
-      child[idx] = (asset, weight / total_weight)
+    if total_weight == 0
+      x = Parallel.threadRand(1:gene_num)
+      child[x] = (child[x][1], 1.0)
+    else
+      for idx in eachindex(child)
+        asset, weight = child[idx]
+        child[idx] = (asset, weight / total_weight)
+      end
     end
 
     ### Assert if child is valid ###

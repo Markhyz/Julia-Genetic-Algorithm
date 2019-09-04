@@ -5,7 +5,12 @@ module Parallel
 using Random
 using Future
 
-const GLOBAL_THREAD_RNG = [MersenneTwister(rand(1:(1<<30))) for i=1:Threads.nthreads()];
+GLOBAL_THREAD_RNG = []
+
+function __init__()
+    Random.seed!(trunc(Int64, time()))
+    global GLOBAL_THREAD_RNG = [MersenneTwister(rand(1:(1<<30))) for i=1:Threads.nthreads()]
+end
 
 function threadRand(args...)
     return rand(GLOBAL_THREAD_RNG[Threads.threadid()], args...)
