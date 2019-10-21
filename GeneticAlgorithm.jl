@@ -594,14 +594,13 @@ end
 
 function referencePointNiching!(sorted_individuals::Vector{Vector{Int64}}, last_frontier::Vector{Int64}, 
                                 individuals::Vector{<: Population.StandardFit}, reference_points::Vector{Vector{Float64}},
-                                remaining_size::Integer)
+                                old_extreme_solutions::Vector{Vector{Float64}}, remaining_size::Integer)
   pop_size = length(individuals)
   new_population = vcat(sorted_individuals...)
   unset_pop = vcat(new_population, last_frontier) 
-  #### Negar obj para evitar problemas com formulação bosta do indiano
+
   min_fitness = [-[individuals[ind_idx][2]...] for ind_idx in unset_pop]
   
-  #### Construir ponto ideal (minimo de todos os objetivo)
   fit_size = length(min_fitness[1])
   ideal_point = fill(1e9, fit_size)
   worst_point = fill(-1e9, fit_size)
@@ -616,21 +615,28 @@ function referencePointNiching!(sorted_individuals::Vector{Vector{Int64}}, last_
     end
   end
  
-  #### Escolher soluções extremas (maximizar objetivo) (uma para cada objetivo)
+  possible_extreme_solutions = vcat(min_fitness, old_extreme_solutions)
   extreme_solutions = []
   for obj_idx = 1 : fit_size
     extreme_idx = -1
     extreme_value = -1e9
-    for (idx, fit) in enumerate(min_fitness)
+    for (idx, fit) in enumerate(possible_extreme_solutions)
       if fit[obj_idx] > extreme_value
         extreme_idx = idx
         extreme_value = fit[obj_idx]
       end
     end
-    push!(extreme_solutions, min_fitness[extreme_idx] - ideal_point)
+    push!(extreme_solutions, possible_extreme_solutions[extreme_idx])
   end
+  for (index, solution) in enumerate(extreme_solutions)
+    if index <= length(old_extreme_solutions)
+      old_extreme_solutions[index] = solution
+    else
+      push!(old_extreme_solutions, solution)
+    end
+  end
+  extreme_solutions = [extreme_solution - ideal_point for extreme_solution in extreme_solutions]
 
-  #### Montar hyper-plano sinistro (spooky) (danger) (seguir código do indiano)
   failSolve = false
   x = ones(length(extreme_solutions))
   nadir_point = []
@@ -649,13 +655,11 @@ function referencePointNiching!(sorted_individuals::Vector{Vector{Int64}}, last_
     nadir_point = worst_point
   end
 
-  #### Normalizar soluções ajustadas
   normalized_fitness = []
   for fit in min_fitness
     push!(normalized_fitness, [(fit[idx] - ideal_point[idx]) / nadir_point[idx] for idx in eachindex(fit)])
   end
 
-  #### Associar soluções aos pontos de referência
   niche_dist = zeros(pop_size)
   niche_point = zeros(Int64, pop_size)
   for idx in eachindex(unset_pop)
@@ -683,7 +687,6 @@ function referencePointNiching!(sorted_individuals::Vector{Vector{Int64}}, last_
     enqueue!(reference_points_queue[selected_point], ind, niche_dist[ind])
   end
 
-  #### Realizar niching
   point_queue = PriorityQueue{Int64, Int64}()
   for (idx, count) in enumerate(niche_count)
     enqueue!(point_queue, idx, count)
@@ -702,7 +705,7 @@ function referencePointNiching!(sorted_individuals::Vector{Vector{Int64}}, last_
 end
 
 function adjustedNonDominatedSorting(this::GeneticAlgorithmType, individuals::Vector{<: Population.StandardFit}, 
-                                     reference_points::Vector{Vector{Float64}})
+                                     reference_points::Vector{Vector{Float64}}, extreme_solutions::Vector{Vector{Float64}})
   sorted_individuals = Array{Int64, 1}[]
   domination = fill(Int64[], length(individuals))
   dominated = zeros(length(individuals))
@@ -741,7 +744,7 @@ function adjustedNonDominatedSorting(this::GeneticAlgorithmType, individuals::Ve
     frontier = new_frontier
   end
   if new_pop_size < this.pop_size
-    selected_individuals = referencePointNiching!(sorted_individuals, frontier, individuals, reference_points, this.pop_size - new_pop_size)
+    selected_individuals = referencePointNiching!(sorted_individuals, frontier, individuals, reference_points, extreme_solutions, this.pop_size - new_pop_size)
     push!(sorted_individuals, selected_individuals)
 	end
   
@@ -752,12 +755,13 @@ end
 function evolveNSGA3!(this::GeneticAlgorithmType, ref_p::Integer, num_it::Integer, log::Integer = 0)
   num_obj = Fitness.getSize(Population.getFitFunction(this.pop))
   reference_points = generateReferencePoints(num_obj, ref_p)
+  extreme_solutions = Vector{Float64}[]
 
   # Create initial population
  	initialize(this)
 
   # Initial population sorting
-  sorted_individuals, pop_diversity = adjustedNonDominatedSorting(this, this.pop[:], reference_points)
+  sorted_individuals, pop_diversity = adjustedNonDominatedSorting(this, this.pop[:], reference_points, extreme_solutions)
 
   # Main loop
   @time for it = 1 : num_it
@@ -783,7 +787,7 @@ function evolveNSGA3!(this::GeneticAlgorithmType, ref_p::Integer, num_it::Intege
     # New generation evaluation
     _, t5 = @timed Population.evalFitness!(new_pop)
     old_new_pop = vcat(this.pop[:], new_pop[:])
-    (sorted_individuals, pop_diversity), t6 = @timed adjustedNonDominatedSorting(this, old_new_pop, reference_points)
+    (sorted_individuals, pop_diversity), t6 = @timed adjustedNonDominatedSorting(this, old_new_pop, reference_points, extreme_solutions)
     idx = 1
     for front in eachindex(sorted_individuals), ind in eachindex(sorted_individuals[front])
       this.pop[idx] = old_new_pop[sorted_individuals[front][ind]]
